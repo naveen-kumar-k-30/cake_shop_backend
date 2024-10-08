@@ -1,0 +1,59 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Card {
+  id     Int        @id @default(autoincrement())
+  image  String     @default("")
+  title  String
+  para   String
+  items  CardItem[]
+}
+
+model CardItem {
+  id        Int       @id @default(autoincrement())
+  image     String    @default("")
+  title     String
+  rate      Int
+  cardId    Int
+  card      Card      @relation(fields: [cardId], references: [id])
+  addToCart AddToCart[]
+  reviews   Review[]
+}
+
+model AddToCart {
+  id          Int      @id @default(autoincrement())
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cardItemId  Int
+  cardItem    CardItem @relation(fields: [cardItemId], references: [id])
+  authId      Int
+  auth        Auth     @relation(fields: [authId], references: [id])
+}
+
+model Auth {
+  id        Int       @id @default(autoincrement())
+  name      String
+  email     String    @unique
+  password  String 
+  addToCart AddToCart[]
+  reviews   Review[]
+}
+
+model Review {
+  id         Int       @id @default(autoincrement())
+  rating     Int       // Rating value, e.g., 1-5
+  comment    String    // Review comment
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  cardItemId Int
+  cardItem   CardItem  @relation(fields: [cardItemId], references: [id])
+  authId     Int
+  auth       Auth      @relation(fields: [authId], references: [id])
+}
