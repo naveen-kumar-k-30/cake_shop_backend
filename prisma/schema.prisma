@@ -44,6 +44,7 @@ model Auth {
   password  String 
   addToCart AddToCart[]
   reviews   Review[]
+  payments  Payment[]
 }
 
 model Review {
@@ -56,4 +57,13 @@ model Review {
   cardItem   CardItem  @relation(fields: [cardItemId], references: [id])
   authId     Int
   auth       Auth      @relation(fields: [authId], references: [id])
+}
+
+model Payment {
+  id        Int      @id @default(autoincrement())
+  paymentId String   @unique
+  amount    Int
+  authId    Int
+  auth      Auth     @relation(fields: [authId], references: [id])
+  createdAt DateTime @default(now())
 }

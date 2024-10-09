@@ -272,7 +272,101 @@ app.get('/user', authenticate, async (req, res) => {
   }
 });
 
+app.post('/reviews', authenticate, async (req, res) => {
+  const { cardId, rating, comment } = req.body;
 
+  try {
+    // Check if the card exists
+    const card = await prisma.card.findUnique({
+      where: { id: cardId },
+    });
+
+    if (!card) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+
+    // Create the review
+    const newReview = await prisma.review.create({
+      data: {
+        rating,
+        comment,
+        cardId,
+        authId: req.userId, // Use authenticated user ID
+      },
+    });
+
+    res.status(201).json({ msg: "Review added successfully", data: newReview });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to add review' });
+  }
+});
+
+app.get('/cards/:id/reviews', async (req, res) => {
+  const { id: cardId } = req.params;
+
+  try {
+    // Check if the card exists
+    const card = await prisma.card.findUnique({
+      where: { id: parseInt(cardId) },
+    });
+
+    if (!card) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+
+    // Fetch all reviews for the specified card
+    const reviews = await prisma.review.findMany({
+      where: { cardId: parseInt(cardId) },
+      include: {
+        auth: { select: { name: true } }, // Include user details like name
+      },
+    });
+
+    res.status(200).json({ msg: "Reviews fetched successfully", data: reviews });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.post('/create-payment-intent', authenticate, async (req, res) => {
+  const { amount } = req.body; // Receive amount in cents
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency: 'inr', // Change currency if needed
+      payment_method_types: ['card'],
+      metadata: { userId: req.userId }, // Attach user info for tracking
+    });
+
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error("[PAYMENT_INTENT_ERROR]", err.message);
+    res.status(500).json({ error: 'Failed to create payment intent' });
+  }
+});
+
+// POST request to record successful payments in the database
+app.post('/payments', authenticate, async (req, res) => {
+  const { paymentId, amount } = req.body;
+
+  try {
+    const payment = await prisma.payment.create({
+      data: {
+        paymentId,
+        amount,
+        authId: req.userId,
+      },
+    });
+
+    res.status(201).json({ msg: "Payment recorded successfully", data: payment });
+  } catch (err) {
+    console.error("[RECORD_PAYMENT_ERROR]", err.message);
+    res.status(500).json({ error: 'Failed to record payment' });
+  }
+});
 
 // Custom error handling middleware
 app.use((err, req, res, next) => {
