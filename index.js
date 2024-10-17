@@ -27,6 +27,12 @@ const authenticate = (req, res, next) => {
   });
 };
 
+// Default route
+app.get('/', (req, res) => {
+  res.send('Welcome to the homepage!');
+});
+
+
 // GET request to fetch all cards with associated items
 app.get('/cards', async (req, res) => {
   try {
@@ -302,26 +308,21 @@ app.post('/reviews', authenticate, async (req, res) => {
   }
 });
 
+// GET request to fetch all reviews for a specific card item
 app.get('/cards/:id/reviews', async (req, res) => {
-  const { id: cardId } = req.params;
+  const { id } = req.params;
 
   try {
-    // Check if the card exists
-    const card = await prisma.card.findUnique({
-      where: { id: parseInt(cardId) },
-    });
-
-    if (!card) {
-      return res.status(404).json({ error: 'Card not found' });
-    }
-
-    // Fetch all reviews for the specified card
     const reviews = await prisma.review.findMany({
-      where: { cardId: parseInt(cardId) },
+      where: { cardItemId: parseInt(id) },
       include: {
-        auth: { select: { name: true } }, // Include user details like name
+        auth: { select: { name: true } }, // Include reviewer's name
       },
     });
+
+    if (reviews.length === 0) {
+      return res.status(404).json({ message: "No reviews found for this card item" });
+    }
 
     res.status(200).json({ msg: "Reviews fetched successfully", data: reviews });
   } catch (err) {
@@ -330,43 +331,119 @@ app.get('/cards/:id/reviews', async (req, res) => {
   }
 });
 
-app.post('/create-payment-intent', authenticate, async (req, res) => {
-  const { amount } = req.body; // Receive amount in cents
-
+// GET request to fetch all reviews
+app.get('/reviews', async (req, res) => {
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: 'inr', // Change currency if needed
-      payment_method_types: ['card'],
-      metadata: { userId: req.userId }, // Attach user info for tracking
-    });
-
-    res.json({ clientSecret: paymentIntent.client_secret });
-  } catch (err) {
-    console.error("[PAYMENT_INTENT_ERROR]", err.message);
-    res.status(500).json({ error: 'Failed to create payment intent' });
-  }
-});
-
-// POST request to record successful payments in the database
-app.post('/payments', authenticate, async (req, res) => {
-  const { paymentId, amount } = req.body;
-
-  try {
-    const payment = await prisma.payment.create({
-      data: {
-        paymentId,
-        amount,
-        authId: req.userId,
+    const reviews = await prisma.review.findMany({
+      include: {
+        auth: { select: { name: true } }, // Include reviewer's name
+        cardItem: { select: { title: true } }, // Optionally include card item title
       },
     });
 
-    res.status(201).json({ msg: "Payment recorded successfully", data: payment });
+    if (reviews.length === 0) {
+      return res.status(404).json({ message: "No reviews found" });
+    }
+
+    res.status(200).json({ msg: "Reviews fetched successfully", data: reviews });
   } catch (err) {
-    console.error("[RECORD_PAYMENT_ERROR]", err.message);
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.post('/create-order', authenticate, async (req, res) => {
+  const { amount } = req.body;
+  const Razorpay = require('razorpay');
+  
+  const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_SECRET_KEY
+  });
+
+  const options = {
+    amount: amount * 100, // Convert to smallest currency unit
+    currency: "INR",
+    receipt: `order_rcptid_${Date.now()}`,
+  };
+
+  try {
+    const order = await razorpay.orders.create(options);
+    res.status(201).json({ id: order.id, amount: order.amount, currency: order.currency });
+  } catch (err) {
+    console.error("Order creation failed:", err);
+    res.status(500).json({ error: 'Order creation failed' });
+  }
+});
+
+
+// POST request to create a new payment record
+app.post('/payment', authenticate, async (req, res) => {
+  const { paymentId, amount } = req.body;
+
+  try {
+    const newPayment = await prisma.payment.create({
+      data: {
+        paymentId,
+        amount,
+        authId: req.userId, // Use authenticated user ID
+      },
+    });
+
+    res.status(201).json({ msg: "Payment recorded successfully", data: newPayment });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to record payment' });
   }
 });
+
+// GET request to fetch payment history for authenticated user
+app.get('/payments', authenticate, async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: { authId: req.userId },
+    });
+
+    res.status(200).json({ msg: "Payments fetched successfully", data: payments });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// PATCH request to update the quantity of an item in the cart
+app.patch('/cart-item', authenticate, async (req, res) => {
+  const { id, quantity } = req.body;
+
+  try {
+    const cartItem = await prisma.addToCart.findUnique({
+      where: { id },
+    });
+
+    if (!cartItem) {
+      return res.status(404).json({ error: 'Cart item not found' });
+    }
+
+    if (cartItem.authId !== req.userId) {
+      return res.status(403).json({ error: 'Unauthorized to update this cart item' });
+    }
+
+    const updatedCartItem = await prisma.addToCart.update({
+      where: { id },
+      data: { quantity },
+    });
+
+    res.status(200).json({ msg: "Cart item quantity updated successfully", data: updatedCartItem });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update cart item' });
+  }
+});
+
+
+
+
+
 
 // Custom error handling middleware
 app.use((err, req, res, next) => {
