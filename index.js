@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 // require('dotenv').config(); // For loading environment variables
 
 const app = express();
-const port = process.env.API_URL || 3000;
+const port =  3000;
 const prisma = new PrismaClient();
 
 app.use(cors());
