@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require('jsonwebtoken');
-require('dotenv').config(); // For loading environment variables
+// require('dotenv').config(); // For loading environment variables
 
 const app = express();
 const port = 3000;
