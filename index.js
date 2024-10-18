@@ -278,17 +278,24 @@ app.get('/user', authenticate, async (req, res) => {
   }
 });
 
-app.post('/reviews', authenticate, async (req, res) => {
-  const { cardId, rating, comment } = req.body;
+// POST request to add a review
+app.post('/cakeReviews/:id', authenticate, async (req, res) => {
+  const { rating, comment } = req.body;
+  const cardItemId = parseInt(req.params.id); // Ensure the ID is for the cardItem
 
   try {
-    // Check if the card exists
-    const card = await prisma.card.findUnique({
-      where: { id: cardId },
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+
+    // Check if the cardItem exists
+    const cardItem = await prisma.cardItem.findUnique({
+      where: { id: cardItemId },
     });
 
-    if (!card) {
-      return res.status(404).json({ error: 'Card not found' });
+    if (!cardItem) {
+      return res.status(404).json({ error: 'CardItem not found' });
     }
 
     // Create the review
@@ -296,40 +303,42 @@ app.post('/reviews', authenticate, async (req, res) => {
       data: {
         rating,
         comment,
-        cardId,
-        authId: req.userId, // Use authenticated user ID
+        cardItemId,   // Correct the ID field
+        authId: req.userId,  // Use authenticated user ID
       },
     });
 
     res.status(201).json({ msg: "Review added successfully", data: newReview });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to add review' });
+    console.error("Error adding review:", err);
+    res.status(500).json({ error: 'Failed to add review', details: err.message });
   }
 });
 
-// GET request to fetch all reviews for a specific card item
-app.get('/cards/:id/reviews', async (req, res) => {
-  const { id } = req.params;
+
+// GET request to fetch all reviews for a specific card
+app.get('/cakeReviews/:id', async (req, res) => {
+  const cardId = parseInt(req.params.id); // Ensure id is a number
 
   try {
     const reviews = await prisma.review.findMany({
-      where: { cardItemId: parseInt(id) },
+      where: { cardId: cardId },
       include: {
         auth: { select: { name: true } }, // Include reviewer's name
       },
     });
 
     if (reviews.length === 0) {
-      return res.status(404).json({ message: "No reviews found for this card item" });
+      return res.status(404).json({ message: "No reviews found for this card" });
     }
 
     res.status(200).json({ msg: "Reviews fetched successfully", data: reviews });
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching reviews:", err);
     res.status(500).json({ error: 'Failed to fetch reviews' });
   }
 });
+
 
 // GET request to fetch all reviews
 app.get('/reviews', async (req, res) => {
