@@ -318,18 +318,18 @@ app.post('/cakeReviews/:id', authenticate, async (req, res) => {
 
 // GET request to fetch all reviews for a specific card
 app.get('/cakeReviews/:id', async (req, res) => {
-  const cardId = parseInt(req.params.id); // Ensure id is a number
+  const cardItemId = parseInt(req.params.id); // Ensure id is a number
 
   try {
     const reviews = await prisma.review.findMany({
-      where: { cardId: cardId },
+      where: { cardItemId: cardItemId }, // Fetch based on cardItemId
       include: {
         auth: { select: { name: true } }, // Include reviewer's name
       },
     });
 
     if (reviews.length === 0) {
-      return res.status(404).json({ message: "No reviews found for this card" });
+      return res.status(404).json({ message: "No reviews found for this item" });
     }
 
     res.status(200).json({ msg: "Reviews fetched successfully", data: reviews });
@@ -338,6 +338,7 @@ app.get('/cakeReviews/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch reviews' });
   }
 });
+
 
 
 // GET request to fetch all reviews
