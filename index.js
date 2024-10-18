@@ -346,21 +346,26 @@ app.get('/reviews', async (req, res) => {
   try {
     const reviews = await prisma.review.findMany({
       include: {
-        auth: { select: { name: true } }, // Include reviewer's name
-        cardItem: { select: { title: true } }, // Optionally include card item title
+        auth: { select: { name: true } }, 
+        cardItem: { select: { image: true, title: true } }, // Ensure title is selected
       },
     });
+
+    // Log the full reviews object to inspect the data
+    console.log(reviews);  // Correct way to log the fetched reviews data
 
     if (reviews.length === 0) {
       return res.status(404).json({ message: "No reviews found" });
     }
 
+    // Send the fetched reviews data as a response
     res.status(200).json({ msg: "Reviews fetched successfully", data: reviews });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch reviews' });
   }
 });
+
 
 app.post('/create-order', authenticate, async (req, res) => {
   const { amount } = req.body;
