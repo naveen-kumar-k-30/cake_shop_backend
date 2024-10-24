@@ -16,14 +16,16 @@ model Card {
 }
 
 model CardItem {
-  id        Int       @id @default(autoincrement())
-  image     String    @default("")
+  id        Int           @id @default(autoincrement())
+  image     String        @default("")
   title     String
   rate      Int
   cardId    Int
-  card      Card      @relation(fields: [cardId], references: [id])
+  card      Card          @relation(fields: [cardId], references: [id])
   addToCart AddToCart[]
   reviews   Review[]
+  checkouts CheckoutItem[]
+  orderItems OrderItem[]  // New relation to OrderItem
 }
 
 model AddToCart {
@@ -37,14 +39,63 @@ model AddToCart {
   auth        Auth     @relation(fields: [authId], references: [id])
 }
 
+model Checkout {
+  id            Int          @id @default(autoincrement())
+  name          String       // Buyer's name
+  eventName     String       // Event associated with the purchase
+  address       String       // Delivery address
+  decorationName String      // Cake decoration name
+  deliveryDate  DateTime     // Delivery date
+  deliveryTime  String       // Delivery time (as time type isn't directly supported in Prisma)
+  totalAmount   Float        // Total amount of the order
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  authId        Int
+  auth          Auth         @relation(fields: [authId], references: [id])
+  items         CheckoutItem[]
+}
+
+model CheckoutItem {
+  id            Int          @id @default(autoincrement())
+  quantity      Int          @default(1)
+  cardItemId    Int
+  cardItem      CardItem     @relation(fields: [cardItemId], references: [id])
+  checkoutId    Int
+  checkout      Checkout     @relation(fields: [checkoutId], references: [id])
+}
+
+model Order {
+  id            Int          @id @default(autoincrement())
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  totalAmount   Float
+  status        String        @default("pending") // pending, shipped, delivered, canceled
+  authId        Int
+  auth          Auth         @relation(fields: [authId], references: [id])
+  orderItems    OrderItem[]
+  paymentMethod String?       @default("cash on Delivery")
+  paymentStatus String?       @default("unpaid") // paid, unpaid, failed
+}
+
+model OrderItem {
+  id            Int          @id @default(autoincrement())
+  quantity      Int          @default(1)
+  cardItemId    Int
+  cardItem      CardItem     @relation(fields: [cardItemId], references: [id])
+  orderId       Int
+  order         Order        @relation(fields: [orderId], references: [id])
+}
+
 model Auth {
-  id        Int       @id @default(autoincrement())
-  name      String
-  email     String    @unique
-  password  String 
-  addToCart AddToCart[]
-  reviews   Review[]
-  payments  Payment[]
+  id            Int          @id @default(autoincrement())
+  name          String
+  email         String       @unique
+  password      String
+  addToCart     AddToCart[]
+  reviews       Review[]
+  payments      Payment[]
+  checkouts     Checkout[]
+  orders        Order[]      // Relation to orders
 }
 
 model Review {

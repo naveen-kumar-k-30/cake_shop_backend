@@ -33,6 +33,21 @@ app.get('/', (req, res) => {
 });
 
 
+app.get('/allcakes', async (req, res) => {
+  try {
+    const cardItems = await prisma.cardItem.findMany({
+      include: {
+        card: true,        // Includes associated Card model
+        addToCart: true,   // Includes associated AddToCart model
+        reviews: true      // Includes associated Review model
+      }
+    });
+    res.json(cardItems);
+  } catch (error) {
+    res.status(500).json({ error: 'Something went wrong!' });
+  }
+});
+
 // GET request to fetch all cards with associated items
 app.get('/cards', async (req, res) => {
   try {
@@ -233,24 +248,6 @@ app.post('/signup', async (req, res) => {
   }
 });
 
-// POST request to handle adding items to cart (protected route)
-app.post('/cart', authenticate, async (req, res) => {
-  const { cardItemId, quantity } = req.body;
-
-  try {
-    const newItem = await prisma.cartItem.create({
-      data: {
-        quantity,
-        cardItemId,
-        userId: req.userId, // Use authenticated user ID
-      },
-    });
-    res.status(201).json({ msg: "Item added to cart successfully", data: newItem });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to add item to cart' });
-  }
-});
 
 // GET request to fetch user data (protected route)
 app.get('/user', authenticate, async (req, res) => {
@@ -367,64 +364,80 @@ app.get('/reviews', async (req, res) => {
 });
 
 
-app.post('/create-order', authenticate, async (req, res) => {
-  const { amount } = req.body;
-  const Razorpay = require('razorpay');
-  
-  const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_SECRET_KEY
-  });
-
-  const options = {
-    amount: amount * 100, // Convert to smallest currency unit
-    currency: "INR",
-    receipt: `order_rcptid_${Date.now()}`,
-  };
-
+// POST request to handle checkout
+app.post('/checkout', authenticate, async (req, res) => {
   try {
-    const order = await razorpay.orders.create(options);
-    res.status(201).json({ id: order.id, amount: order.amount, currency: order.currency });
-  } catch (err) {
-    console.error("Order creation failed:", err);
-    res.status(500).json({ error: 'Order creation failed' });
-  }
-});
+    const { items, totalAmount ,formData} = req.body; // Correctly named 'items'
+    console.log("Received Checkout Data:", req.body);
 
+    // Check if items (cart items) are empty
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'Cart is empty' });
+    }
 
-// POST request to create a new payment record
-app.post('/payment', authenticate, async (req, res) => {
-  const { paymentId, amount } = req.body;
-
-  try {
-    const newPayment = await prisma.payment.create({
+    // Create a new checkout entry related to the authenticated user
+    const newCheckout = await prisma.checkout.create({
       data: {
-        paymentId,
-        amount,
-        authId: req.userId, // Use authenticated user ID
+        totalAmount,
+        createdAt: new Date(),
+        updatedAt: new Date(), // Ensure updatedAt is included
+        authId: req.userId, // Relate to the authenticated user
+        
       },
     });
 
-    res.status(201).json({ msg: "Payment recorded successfully", data: newPayment });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to record payment' });
-  }
-});
+    // For each cart item, reduce stock, create order entry, and clear cart
+    const promises = items.map(async (cartItem,index) => {
+      const item = await prisma.cardItem.findUnique({ where: { id: cartItem.cardItemId } });
 
-// GET request to fetch payment history for authenticated user
-app.get('/payments', authenticate, async (req, res) => {
-  try {
-    const payments = await prisma.payment.findMany({
-      where: { authId: req.userId },
+      if (!item) {
+        throw new Error('Cart item not found');
+      }
+      const formDetails = formData[index];
+      await prisma.checkoutItem.create({
+        data: {
+          quantity: cartItem.quantity,
+          cardItemId: cartItem.cardItemId,
+          checkoutId: newCheckout.id,  // Link to checkout
+          name: formDetails.name,
+          eventName: formDetails.eventName,
+          address: formDetails.address,
+          decorationName: formDetails.decorationName,
+          deliveryDate: formDetails.deliveryDate,
+          deliveryTime: formDetails.deliveryTime,
+        },
+      });
+
+      // Create order for each cart item
+      await prisma.orderItem.create({
+        data: {
+          quantity: cartItem.quantity,
+          totalAmount: cartItem.quantity * item.rate,
+          cardItemId: cartItem.cardItemId,
+          orderId: newCheckout.id, // Link to checkout
+          authId: req.userId,
+        },
+      });
+
+      // Clear the cart (delete cart items after order creation)
+      await prisma.addToCart.delete({
+        where: { id: cartItem.id },
+      });
     });
 
-    res.status(200).json({ msg: "Payments fetched successfully", data: payments });
+    await Promise.all(promises); // Ensure all cart items are processed
+
+    // Return the response to the client
+    res.status(201).json({ msg: 'Checkout successful', data: newCheckout });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch payments' });
+    console.error('Checkout error:', err.message);
+    res.status(500).json({ error: 'Failed to process checkout' });
   }
 });
+
+
+
+
 
 // PATCH request to update the quantity of an item in the cart
 app.patch('/cart-item', authenticate, async (req, res) => {
